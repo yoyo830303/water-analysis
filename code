@@ -1,0 +1,156 @@
+#' ----------------------------------------------------------------------------
+#' title: water_taste_test.R
+#' description:
+#'   Perform the data analysis as follows: 
+#'     1. Five-region hypothesis test of OR 
+#'     2. 95% confidence interval of AUC
+#'     3. Stratified analysis
+#'     4. Preference for tap water
+#' author:
+#'   Jing-Rong, Jhuang <f05h41001@ntu.edu.tw>
+#' date: 16-December-2019
+#' ----------------------------------------------------------------------------
+
+## Input a function for conducting the five region test, 
+## which was available at https://www.nature.com/articles/s41598-017-05301-4.
+five.region.test=function( or, se, lc=0.5, uc=2, alpha=0.05 ){
+  options(scipen=5)
+  lor=log(or)
+  lb=log(lc)
+  ub=log(uc)
+  if(lor<lb-qnorm(alpha,0,1)*se){
+    newl=lor+qnorm(alpha,0,1)*se
+  }else if(lb-qnorm(alpha,0,1)*se<=lor&lor<=lb-qnorm(alpha/2,0,1)*se){
+    newl=lb
+  }else if(lb-qnorm(alpha/2,0,1)*se<lor&lor<ub-qnorm(alpha/2,0,1)*se){
+    newl=lor+qnorm(alpha/2,0,1)*se
+  }else if(ub-qnorm(alpha/2,0,1)*se<=lor){
+    newl=ub
+  }
+  if(lor<=lb-qnorm(1-alpha/2,0,1)*se){
+    newu=lb
+  }else if(lb-qnorm(1-alpha/2,0,1)*se<lor&lor<ub-qnorm(1-alpha/2,0,1)*se){
+    newu=lor+qnorm(1-alpha/2,0,1)*se
+  }else if(ub-qnorm(1-alpha/2,0,1)*se<=lor&lor<=ub-qnorm(1-alpha,0,1)*se){
+    newu=ub
+  }else if(ub-qnorm(1-alpha,0,1)*se<lor){
+    newu=lor+qnorm(1-alpha,0,1)*se
+  }
+  z1=(lor-lb)/se
+  z2=(lor-log(1))/se
+  z3=(lor-ub)/se
+  p1=1-pnorm(z1,0,1)
+  p21=pnorm(z1,0,1)
+  p22=1-pnorm(z2,0,1)
+  p2=2*min(p21,p22)
+  p3=2*(1-pnorm(abs(z2),0,1))
+  p41=pnorm(z2,0,1)
+  p42=1-pnorm(z3,0,1)
+  p4=2*min(p41,42)
+  p5=pnorm(z3,0,1)
+  p=round(c(p1,p2,p3,p4,p5),3)
+  for(i in 1:length(p)){
+    if(p[i]<=0.0001) p[i]="<0.001"
+  }
+  new.p=matrix(p,5,1)
+  dimnames(new.p)=list(c("H1","H2","H3","H4","H5"),c("pvalue"))
+  r1=ifelse(z1>=qnorm(1-alpha,0,1),1,0)
+  r2=ifelse(z1<=qnorm(alpha/2,0,1)|z2>=qnorm(1-alpha/2,0,1),1,0)
+  r3=ifelse(abs(z2)>=qnorm(1-alpha/2,0,1),1,0)
+  r4=ifelse(z2<=qnorm(alpha/2,0,1)|z3>=qnorm(1-alpha/2,0,1),1,0)
+  r5=ifelse(z3<=qnorm(alpha,0,1),1,0)
+  rr1=ifelse(z1>=qnorm(0.95,0,1),"Rejected","")
+  rr2=ifelse(z1<=qnorm(0.025,0,1)|z2>=qnorm(0.975,0,1),"Rejected","")
+  rr3=ifelse(abs(z2)>=qnorm(0.975,0,1),"Rejected","")
+  rr4=ifelse(z2<=qnorm(0.025,0,1)|z3>=qnorm(0.975,0,1),"Rejected","")
+  rr5=ifelse(z3<=qnorm(0.05,0,1),"Rejected","")
+  new.r=rbind(rr1,rr2,rr3,rr4,rr5)
+  if(r1==0&r2==0&r3==0&r4==0&r5==0){
+    con="Inconclusive"
+  }else if(r1==0&r2==1&r3==1&r4==1&r5==1){
+    con="A Strong Protective Factor"
+  }else if(r1==1&r2==0&r3==1&r4==1&r5==1){
+    con="A Weak Protective Factor"
+  }else if(r1==1&r2==1&r3==1&r4==0&r5==1){
+    con="A Weak Risk Factor"
+  }else if(r1==1&r2==1&r3==1&r4==1&r5==0){
+    con="A Strong Risk Factor"
+  }else if(r1==0&r2==0&r3==1&r4==1&r5==1){
+    con="A Protective Factor"
+  }else if(r1==1&r2==1&r3==1&r4==0&r5==0){
+    con="A Risk Factor"
+  }else if(r1==1&r2==0&r3==0&r4==0&r5==0){
+    con="Not a Strong Protective Factor"
+  }else if(r1==0&r2==0&r3==0&r4==0&r5==1){
+    con="Not a Strong Risk Factor"
+  }else if(r1==1&r2==0&r3==0&r4==0&r5==1){
+    con="Not a Strong Factor"
+  }else{con="Error"
+  }
+  oldl=lor-qnorm(1-alpha/2,0,1)*se
+  oldu=lor+qnorm(1-alpha/2,0,1)*se
+  old.p=round(2*(1-pnorm(abs((lor-log(1))/se),0,1)),5)
+  old=cbind(round(exp(oldl),3),round(exp(oldu),3),old.p)
+  dimnames(old)=list(NULL,Estimate=c("CI lower","CI upper","pvalue"))
+  new.ci=cbind(round(exp(newl),3),round(exp(newu),3))
+  dimnames(new.ci)=list(NULL,Estimate=c("CI lower","CI upper"))
+  new.rej=cbind(new.p,new.r)
+  result=list("Classical"=old, "Five.Region.Test"=new.rej,
+              "Five.Region.Confidence.Interval"=new.ci, "Conclusion"=con)
+  return(result)
+}
+
+## Install some packages for analysis.
+## install.packages("pROC")
+## install.packages("readxl")
+library(pROC)
+library(readxl)
+
+## Input raw data.
+setwd("~/")
+water_test <- read_excel("water_test.xls")
+
+## Baseline characterisrics
+Table_gender = table(water_test$Gender,water_test$X4)
+Table_position = table(water_test$Position,water_test$X4)
+Table_X1 = table(water_test$X1,water_test$X4)
+Table_X2 = table(water_test$X2,water_test$X4)
+
+## Results of the water taste test
+Table_main_result = table(water_test$X3,water_test$X4)
+or = (29*106)/(33*110)
+se = sqrt(sum(1/Table_main_result))
+five.region.test(or,se)
+ROC = roc(X3~X4,data=water_test,direction="<")
+ci.auc(ROC,method="bootstrap",boot.n=10000)
+
+## Stratified analysis
+strat_fun <- function(input){
+  mod = glm(X3~X4,data=input,family=binomial)
+  or = exp(summary(mod)$coefficient[2,1])
+  se = summary(mod)$coefficient[2,2]
+  ROC = roc(X3~X4,data=input,direction="<")
+  return(list(OR=five.region.test(or,se),
+              AUC=ci.auc(ROC,method="bootstrap",boot.n=10000)))
+}
+
+## Gender
+strat_fun(subset(water_test,Gender==0))
+strat_fun(subset(water_test,Gender==1))
+
+## Position
+strat_fun(subset(water_test,Position==1))
+strat_fun(subset(water_test,Position==2))
+
+## Whether or not the participant had drunk cold water 
+## from water dispensers in the previous month
+strat_fun(subset(water_test,X1==1))
+strat_fun(subset(water_test,X1==0))
+
+## Whether or not the participant had drunk water 
+## from drinking fountains before
+strat_fun(subset(water_test,X2==1))
+strat_fun(subset(water_test,X2==0))
+
+## The preference for tap water
+preference = table(water_test$X5,water_test$X4)
